@@ -10,24 +10,19 @@ __lua__
 function _init()
 	map_setup()
 	make_player()
-
-	state="title"
+	
+	game_win=false
+	game_over=false
 end
 
 --
 
 function _update()
-	if (state=="title") then
-		if (btnp(❎)) then
-			start_game()
-		end
-
-	elseif (state=="game") then
+	if (not game_over) then
 		update_map()
 		move_player()
 		check_win_lose()
-
-	elseif (state=="win" or state=="lose") then
+	else
 		if (btnp(❎)) extcmd("reset")
 	end
 end
@@ -36,37 +31,15 @@ end
 
 function _draw()
 	cls()
-
-	if (state=="title") then
-		draw_title()
-
-	elseif (state=="game") then
+	
+	if (not game_over) then
 		draw_map()
 		draw_player()
+		draw_hud()	
 		if (btn(❎)) show_inventory()
-		camera()
-		draw_hud()
-
-	elseif (state=="win" or state=="lose") then
+	else
 		draw_win_lose()
 	end
-end
-
---
-
-function start_game()
-	map_setup()
-	make_player()
-
-	state="game"
-end
-
---
-
-function draw_title()
-	camera()
-	print("boff's quest",34,40,7)
-	print("press ❎ to start",30,60,6)
 end
 
 --
@@ -77,15 +50,14 @@ function map_setup()
 	-- timer/animations
 	timer=0
 	anim_time=30 -- 30 = 1 second
-	damage_timer=0
-	damage_time=30
-
+	
 	-- map tiles
 	wall=0
 	key=1
 	door=2
 	anim1=3
 	anim2=4
+	chest=5
 	lose=6
 	win=7
 end
@@ -103,35 +75,19 @@ end
 --
 
 function update_map()
+	cls()
 	if (timer<0) then
 		toggle_tiles()
 		timer=anim_time
 	end
 	timer-=1
-
-	if (damage_timer<0) then
-		damage_tick()
-		damage_timer=damage_time
-	end
-	damage_timer-=1
-end
-
---
-
-function damage_tick()
-	if (is_tile(lose,p.x,p.y)) then
-		p.hp-=10
-		if (p.hp<=0) then
-			state="lose"
-		end
-	end
 end
 
 --
 
 function is_tile(tile_type,x,y)
 	tile=mget(x,y)
-
+	
 	has_flag=fget(tile,tile_type)
 	return has_flag
 end
@@ -160,6 +116,7 @@ end
 
 function get_key(x,y)
 	p.keys+=1
+	p.points+=10
 	swap_tile(x,y)
 	sfx(1)
 end
@@ -173,6 +130,13 @@ function open_door(x,y)
 end
 
 --
+
+function open_chest(x,y)
+	p.keys-=1
+	p.points+=50
+	swap_tile(x,y)
+	sfx(1)
+end
 -->8
 -- player --
 
@@ -182,8 +146,9 @@ function make_player()
 	p.y=2
 	p.sprite=1
 	p.keys=0
-	p.hp=100
 	p.points=0
+	p.hp_max=100
+	p.hp=p.hp_max
 end
 
 --
@@ -197,14 +162,14 @@ end
 function move_player()
 	newx=p.x
 	newy=p.y
-
+	
 	if (btnp(⬅️)) newx-=1
 	if (btnp(➡️)) newx+=1
 	if (btnp(⬆️)) newy-=1
 	if (btnp(⬇️)) newy+=1
-
+	
 	interact(newx,newy)
-
+	
 	if (can_move(newx,newy)) then
 		p.x=mid(0,newx,127)
 		p.y=mid(0,newy,63)
@@ -220,15 +185,9 @@ function interact(x,y)
 		get_key(x,y)
 	elseif (is_tile(door,x,y) and p.keys>0) then
 		open_door(x,y)
+	elseif (is_tile(chest,x,y) and p.keys>0) then
+		open_chest(x,y)
 	end
-end
-
---
-
-function draw_hud()
-	print("hp "..p.hp,1,1,8)
-	print("pts "..p.points,1,9,11)
-	print("keys "..p.keys,1,17,9)
 end
 
 --
@@ -238,7 +197,7 @@ end
 function show_inventory()
 	invx=mapx*8+40
 	invy=mapy*8+8
-
+	
 	rectfill(invx,invy,invx+48,invy+24,0)
 	print("inventory",invx+7,invy+4,7)
 	print("keys "..p.keys,invx+12,invy+14,9)
@@ -264,7 +223,11 @@ end
 
 function check_win_lose()
 	if (is_tile(win,p.x,p.y)) then
-		state="win"
+		game_win=true
+		game_over=true
+	elseif (is_tile(lose,p.x,p.y)) then
+		game_win=false
+		game_over=true
 	end
 end
 
@@ -272,13 +235,25 @@ end
 
 function draw_win_lose()
 	camera()
-	if (state=="win") then
+	if (game_win) then
 		print("win",37,64,7)
 	else
 		print("lose",38,64,7)
 	end
-
+	
 	print("press ❎ to play again",20,72,5)
+end
+
+--
+-->8
+-- hud
+
+function draw_hud()
+	mapx=flr(p.x/16)*16
+	mapy=flr(p.y/16)*16
+	
+	print("♥ "..p.hp,mapx,mapy,7)
+	print("🅾️ "..p.points,mapx,mapy+8,7)
 end
 __gfx__
 00000000888000000000000088700000888000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
@@ -486,7 +461,7 @@ __map__
 7d4a4a4a6e6e786e676e6e6e6e4a7d49497d6e6e6e6e6e725959595959727d49000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 7d4a776e6e4a4a4a6e6e6e6e78684a49496e4a6e6e696e725959595959727d49000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 7d7d6e6e4a6e4a166e6e6e6e6e6e7949496e6e6e4a6e6e706262735963717d49000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
-7d7d7d6e40795959595959595959595959595959595979767676765576767d49000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+7d7d7d6e6e795959595959595959595959595959595979767676765576767d49000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 7d7d786e6e59596e6e6e6e6e786e6e49494a4a4a4a596e4a4a4a6e596e7d7d49000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 7d6e4a6e6e596e6e674a6e686e6e6e49494a4a4a4a595959595959596e6e7d49000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 7d67776e6e596e6e6e6e6e6e6e4b4c4c4c4c4c4d4a4a4a4a4a4a4a4a6e4a6e49000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
